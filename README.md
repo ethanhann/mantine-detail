@@ -1,5 +1,11 @@
 # @ethanhann/mantine-detail
 
+[![npm version](https://img.shields.io/npm/v/@ethanhann/mantine-detail.svg)](https://www.npmjs.com/package/@ethanhann/mantine-detail)
+[![CI](https://github.com/ethanhann/mantine-detail/actions/workflows/ci.yml/badge.svg)](https://github.com/ethanhann/mantine-detail/actions/workflows/ci.yml)
+[![Coverage](https://img.shields.io/endpoint?url=https%3A%2F%2Fethanhann.github.io%2Fmantine-detail%2Fcoverage-badge.json)](https://ethanhann.github.io/mantine-detail)
+[![Storybook](https://img.shields.io/badge/Storybook-deployed-ff4785?logo=storybook&logoColor=white)](https://ethanhann.github.io/mantine-detail)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](./LICENSE)
+
 The single-record companion to [`@ethanhann/mantine-dataview`](https://www.npmjs.com/package/@ethanhann/mantine-dataview).
 Where dataview is the **many** (a read-only list), `mantine-detail` is the **one**: a record's
 `view` / `edit` / `create` lifecycle, presented in a pluggable surface (drawer / modal / panel /
