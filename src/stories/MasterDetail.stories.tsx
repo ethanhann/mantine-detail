@@ -139,12 +139,33 @@ function OptimisticPatchScreen() {
 
 const meta = {
 	title: "Detail/MasterDetail recipe",
-	parameters: { layout: "padded" },
+	parameters: {
+		layout: "padded",
+		docs: {
+			description: {
+				component:
+					"The `<MasterDetail>` layout is shipped as a recipe rather than a component, so it never recouples this library to dataview. Each story wires `useDataViewFetcher` to `useDetailFetcher` through `bindDataView`: a row click opens the detail, and saves, creates, and deletes reconcile back into the list. The variants below show side-by-side and drawer layouts plus optimistic in-place reconciliation.",
+			},
+		},
+	},
 } satisfies Meta;
 export default meta;
 
+/**
+ * List and detail side by side. The list narrows to make room when the panel
+ * opens. The "New user" button starts a create flow whose save reconciles the
+ * new row into the list via `refetch()`.
+ */
 export const SideBySide: StoryObj = { render: () => <SideBySideScreen /> };
+
+/** The same wiring with a drawer presentation, so the list stays full-width. */
 export const WithDrawer: StoryObj = { render: () => <DrawerScreen /> };
+
+/**
+ * `bindDataView(view, { strategy: "patch" })` applies each write to the list in
+ * place for instant feedback, then dataview revalidates in the background.
+ * `view.isRevalidating` drives the subtle sync indicator.
+ */
 export const WithOptimisticPatch: StoryObj = {
 	render: () => <OptimisticPatchScreen />,
 };
