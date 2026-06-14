@@ -73,6 +73,24 @@ describe("useMantineFormDetail", () => {
 		expect(result.current.bind.isDirty).toBe(false);
 	});
 
+	it("does not reset over unsaved edits when the record changes mid-edit", () => {
+		// Arrange: load a record, then make the form dirty
+		const { result, rerender } = setup({
+			record: { id: "1", name: "Ann" },
+			mode: "edit",
+		});
+		act(() => result.current.form.setFieldValue("name", "Edited"));
+		expect(result.current.bind.isDirty).toBe(true);
+
+		// Act: the same record revalidates underneath the active edit (new object,
+		// same mode), as a controlled-core background refetch would do
+		rerender({ record: { id: "1", name: "Ann (server)" }, mode: "edit" });
+
+		// Assert: the in-progress edit is preserved, not clobbered
+		expect(result.current.form.getValues()).toEqual({ name: "Edited" });
+		expect(result.current.bind.isDirty).toBe(true);
+	});
+
 	it("surfaces isDirty once the form is edited", () => {
 		// Arrange
 		const { result } = setup({

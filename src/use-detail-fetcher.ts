@@ -24,7 +24,9 @@ export function useDetailFetcher<TData, TForm = TData>(
 
 	const latest = useRef(options);
 	latest.current = options;
-	// Monotonic token so a slow load() can never overwrite a newer one.
+	// Monotonic token for every write to `record` (load, submit-adopt, delete),
+	// so a slow one can never overwrite a newer record. The single token across
+	// all three is what keeps "which record is showing" coherent.
 	const loadToken = useRef(0);
 
 	const onLoadRequest = useCallback(async (id: string) => {
@@ -45,14 +47,19 @@ export function useDetailFetcher<TData, TForm = TData>(
 
 	const onSubmit = useCallback<SubmitFn<TData, TForm>>(async (values, ctx) => {
 		// Persist, then adopt the returned record so the post-save view shows it.
+		// Share the load token (it represents "which record is showing"), so a
+		// load/open started before this resolves supersedes the adopt and a stale
+		// save can't clobber a newer record. Mirrors the core's write-token guard.
+		const token = ++loadToken.current;
 		const saved = await latest.current.submit(values, ctx);
-		setRecord(saved);
+		if (token === loadToken.current) setRecord(saved);
 		return saved;
 	}, []);
 
 	const onDelete = useCallback<RemoveFn>(async (id) => {
+		const token = ++loadToken.current;
 		await latest.current.remove?.(id);
-		setRecord(null);
+		if (token === loadToken.current) setRecord(null);
 	}, []);
 
 	const detail = useDetail<TData, TForm>({

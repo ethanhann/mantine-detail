@@ -184,6 +184,43 @@ describe("<Detail>", () => {
 			expect(detail.close).toHaveBeenCalledTimes(1);
 		});
 
+		it("keeps Close usable while a record is loading (view mode)", () => {
+			// Arrange: a load is in flight, no write
+			const detail = makeDetail({
+				mode: "view",
+				status: "loading" as DetailStatus,
+			});
+
+			// Act
+			renderWithProvider(
+				<Detail detail={detail} presentation="panel">
+					<Detail.Actions />
+				</Detail>,
+			);
+
+			// Assert: the load token supersedes a stale load, so Close stays enabled
+			expect(screen.getByRole("button", { name: "Close" })).toBeEnabled();
+		});
+
+		it("keeps Cancel usable but holds Save while loading (edit mode)", () => {
+			// Arrange
+			const detail = makeDetail({
+				mode: "edit",
+				status: "loading" as DetailStatus,
+			});
+
+			// Act
+			renderWithProvider(
+				<Detail detail={detail} presentation="panel">
+					<Detail.Actions onSave={vi.fn()} />
+				</Detail>,
+			);
+
+			// Assert: Cancel is free, Save still waits on the record to load
+			expect(screen.getByRole("button", { name: "Cancel" })).toBeEnabled();
+			expect(screen.getByRole("button", { name: "Save" })).toBeDisabled();
+		});
+
 		it("disables actions while a submit is in flight", () => {
 			// Arrange
 			const detail = makeDetail({ mode: "edit", isSubmitting: true });

@@ -203,6 +203,49 @@ describe("useDetailFetcher", () => {
 			expect(result.current.mode).toBe("view");
 		});
 
+		it("a superseded save does not clobber a newer loaded record", async () => {
+			// Arrange: control submit and the second load independently
+			const submitGate = deferred<User>();
+			const loadGate = deferred<User>();
+			const submit = vi.fn(() => submitGate.promise);
+			const load = vi
+				.fn<(id: string) => Promise<User>>()
+				.mockImplementationOnce(async (id) => ({ id, name: `User ${id}` }))
+				.mockImplementationOnce(() => loadGate.promise);
+			const { result } = setup({ load, submit, initialMode: "edit" });
+
+			// Open "1" in edit (resolves immediately)
+			await act(async () => {
+				result.current.open("1", "edit");
+			});
+			expect(result.current.record).toEqual({ id: "1", name: "User 1" });
+
+			// Start a save of "1" (held open), then navigate to "2" before it resolves
+			let saving!: Promise<void>;
+			act(() => {
+				saving = result.current.save({ id: "1", name: "Edited" });
+			});
+			act(() => {
+				result.current.open("2", "view");
+			});
+
+			// Act: the newer load resolves first
+			await act(async () => {
+				loadGate.resolve({ id: "2", name: "User 2" });
+				await loadGate.promise;
+			});
+			expect(result.current.record).toEqual({ id: "2", name: "User 2" });
+
+			// Act: the now-stale save resolves
+			await act(async () => {
+				submitGate.resolve({ id: "1", name: "Edited" });
+				await saving;
+			});
+
+			// Assert: record "2" survives; the stale save's adopt was dropped
+			expect(result.current.record).toEqual({ id: "2", name: "User 2" });
+		});
+
 		it("creates, adopts the new record, and reconciles 'created'", async () => {
 			// Arrange
 			const { result, submit, master } = setup({ initialMode: "create" });
