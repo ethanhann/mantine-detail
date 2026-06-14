@@ -75,6 +75,23 @@ function useDataViewMaster<TData>(
 			return;
 		}
 
+		// "patch" requires dataview >= 0.8's in-place primitives. Bound to an
+		// older view they are undefined, so fall back to a full refetch (still
+		// correct, just not optimistic) instead of throwing a cryptic TypeError.
+		if (
+			typeof v.patchRow !== "function" ||
+			typeof v.insertRow !== "function" ||
+			typeof v.removeRow !== "function"
+		) {
+			if (process.env.NODE_ENV !== "production") {
+				console.warn(
+					'[mantine-detail] bindDataView strategy "patch" needs @ethanhann/mantine-dataview >= 0.8 (patchRow/insertRow/removeRow). Falling back to refetch().',
+				);
+			}
+			v.refetch();
+			return;
+		}
+
 		// "patch": apply in place for instant feedback. dataview schedules a
 		// background revalidate after each primitive, so server truth still wins.
 		// A row that no longer matches the filter disappears, an off-page create is

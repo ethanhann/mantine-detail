@@ -52,15 +52,27 @@ export function useMantineFormDetail<TData, TForm>(
 	// Reset-on-load: when a new record lands (or on entering create), reset the
 	// form to it and mark that the pristine baseline, so isDirty starts false.
 	const { record, mode } = detail;
+	// The record we last synced, to tell a real change from a re-render.
+	const prevRecordRef = useRef(record);
 	useEffect(() => {
 		const f = formRef.current;
-		const values =
-			mode === "create"
-				? (blankRef.current ?? f.getValues())
-				: record != null
-					? (toFormRef.current?.(record) ?? (record as unknown as TForm))
-					: null;
-		if (values === null) return;
+		const recordChanged = prevRecordRef.current !== record;
+		prevRecordRef.current = record;
+
+		if (mode === "create") {
+			const blank = blankRef.current ?? f.getValues();
+			f.setValues(blank);
+			f.resetDirty(blank);
+			return;
+		}
+		if (record == null) return;
+		// Don't clobber unsaved edits when the record changes underneath an
+		// active edit (e.g. a controlled-core background revalidation). A mode
+		// change (cancel/save back to view) still resets; only a same-mode
+		// record swap while dirty-editing is skipped. The narrow exception is
+		// opening a *different* record straight into edit while already dirty.
+		if (recordChanged && mode === "edit" && f.isDirty()) return;
+		const values = toFormRef.current?.(record) ?? (record as unknown as TForm);
 		f.setValues(values);
 		f.resetDirty(values);
 	}, [record, mode]);

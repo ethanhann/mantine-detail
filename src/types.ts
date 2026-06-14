@@ -10,6 +10,12 @@ export type WriteMode = Exclude<DetailMode, "view">;
 export type OpenMode = Exclude<DetailMode, "create">;
 
 /**
+ * Modes `setMode()` can switch to: the view↔edit toggle. `create` is entered
+ * only via `openCreate()`, which also clears the active row and load state.
+ */
+export type SetModeTarget = Exclude<DetailMode, "create">;
+
+/**
  * Lifecycle of the `load()` round-trip only. Submit and delete have their own
  * `isSubmitting` / `isDeleting` flags on the hook return. `status` never
  * reflects a write.
@@ -116,12 +122,6 @@ export interface UseDetailOptions<TData, TForm = TData> {
 
 	/** Bind to a master so saves/creates/deletes reconcile into the list. */
 	master?: MasterBinding<TData>;
-	/**
-	 * Reconciliation strategy hint. For the dataview binding the strategy is
-	 * configured on `bindDataView(view, { strategy })` (only the binding can
-	 * mutate the list in place), so this option is informational there.
-	 */
-	reconcile?: ReconcileStrategy;
 
 	/**
 	 * Delegated dirty signal from your form. Use when dirtiness is known at
@@ -158,13 +158,6 @@ export interface UseDetailFetcherOptions<TData, TForm = TData> {
 	/** Bind to a master so saves/creates/deletes reconcile into the list. */
 	master?: MasterBinding<TData>;
 
-	/**
-	 * Reconciliation strategy hint. For the dataview binding the strategy is
-	 * configured on `bindDataView(view, { strategy })` (only the binding can
-	 * mutate the list in place), so this option is informational there.
-	 */
-	reconcile?: ReconcileStrategy;
-
 	/** Delegated dirty signal from your form (see {@link UseDetailOptions.isDirty}). */
 	isDirty?: boolean;
 
@@ -197,8 +190,11 @@ export interface UseDetailReturn<TData, TForm = TData> {
 	open: (id: string, mode?: OpenMode) => void;
 	/** Open a blank form in `create` mode; no load. */
 	openCreate: () => void;
-	/** Switch mode (e.g. `view` → `edit`); routed through the dirty guard. */
-	setMode: (mode: DetailMode) => void;
+	/**
+	 * Toggle between `view` and `edit`; routed through the dirty guard. `create`
+	 * is not a valid target (use `openCreate()`); passing it is a no-op.
+	 */
+	setMode: (mode: SetModeTarget) => void;
 	/** Close the detail; honors the dirty guard. */
 	close: () => void;
 

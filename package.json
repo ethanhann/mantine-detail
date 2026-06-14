@@ -3,6 +3,7 @@
 	"version": "0.1.0",
 	"description": "The single-record companion to @ethanhann/mantine-dataview: a record's view/edit/create lifecycle in a pluggable surface, reconciled back into a master list. Built on Mantine v9.",
 	"type": "module",
+	"main": "./dist/index.js",
 	"module": "./dist/index.js",
 	"types": "./dist/index.d.ts",
 	"exports": {
@@ -11,6 +12,7 @@
 			"import": "./dist/index.js"
 		},
 		"./styles.css": "./dist/mantine-detail.css",
+		"./package.json": "./package.json",
 		"./dataview": {
 			"types": "./dist/dataview/index.d.ts",
 			"import": "./dist/dataview/index.js"
@@ -43,7 +45,7 @@
 		"prepublishOnly": "npm run build"
 	},
 	"engines": {
-		"node": ">=18"
+		"node": ">=20"
 	},
 	"peerDependencies": {
 		"@ethanhann/mantine-dataview": ">=0.8.0",
@@ -107,7 +109,11 @@
 	},
 	"repository": {
 		"type": "git",
-		"url": "git+https://github.com/ethanhann/mantine-detail-prototype.git"
+		"url": "git+https://github.com/ethanhann/mantine-detail.git"
+	},
+	"homepage": "https://ethanhann.github.io/mantine-detail",
+	"bugs": {
+		"url": "https://github.com/ethanhann/mantine-detail/issues"
 	},
 	"publishConfig": {
 		"registry": "https://registry.npmjs.org"

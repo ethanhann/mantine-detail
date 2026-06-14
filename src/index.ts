@@ -26,6 +26,7 @@ export type {
 	ReconcileEvent,
 	ReconcileStrategy,
 	RemoveFn,
+	SetModeTarget,
 	SubmitContext,
 	SubmitFn,
 	UseDetailFetcherOptions,

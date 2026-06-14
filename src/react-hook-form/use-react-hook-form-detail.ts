@@ -49,16 +49,25 @@ export function useReactHookFormDetail<TData, TForm extends FieldValues>(
 	// Reset-on-load: RHF's reset(values) also rebases the dirty comparison, so
 	// isDirty starts false against each freshly loaded record.
 	const { record, mode } = detail;
+	// The record we last synced, to tell a real change from a re-render.
+	const prevRecordRef = useRef(record);
 	useEffect(() => {
 		const f = formRef.current;
-		const values =
-			mode === "create"
-				? (blankRef.current ?? f.getValues())
-				: record != null
-					? (toFormRef.current?.(record) ?? (record as unknown as TForm))
-					: null;
-		if (values === null) return;
-		f.reset(values);
+		const recordChanged = prevRecordRef.current !== record;
+		prevRecordRef.current = record;
+
+		if (mode === "create") {
+			f.reset(blankRef.current ?? f.getValues());
+			return;
+		}
+		if (record == null) return;
+		// Don't clobber unsaved edits when the record changes underneath an
+		// active edit (e.g. a controlled-core background revalidation). A mode
+		// change (cancel/save back to view) still resets; only a same-mode
+		// record swap while dirty-editing is skipped. The narrow exception is
+		// opening a *different* record straight into edit while already dirty.
+		if (recordChanged && mode === "edit" && f.formState.isDirty) return;
+		f.reset(toFormRef.current?.(record) ?? (record as unknown as TForm));
 	}, [record, mode]);
 
 	const onSave = useCallback(async () => {

@@ -5,8 +5,11 @@ import {
 	Skeleton,
 	Stack,
 	Text,
+	Title,
+	VisuallyHidden,
 } from "@mantine/core";
-import { type ReactNode, useCallback, useMemo } from "react";
+import type { ReactNode } from "react";
+import { runWithConfirm } from "../guard";
 import type { DetailMode, UseDetailReturn } from "../types";
 import {
 	DetailContext,
@@ -32,7 +35,8 @@ function defaultTitle(mode: DetailMode): string {
 
 function DefaultLoadingDetail() {
 	return (
-		<Stack gap="sm" aria-busy="true" data-testid="detail-loading">
+		<Stack gap="sm" role="status" aria-busy="true" data-testid="detail-loading">
+			<VisuallyHidden>Loading record…</VisuallyHidden>
 			<Skeleton height={12} width="40%" />
 			<Skeleton height={36} />
 			<Skeleton height={36} />
@@ -41,10 +45,22 @@ function DefaultLoadingDetail() {
 	);
 }
 
-function DefaultErrorState({ retry }: { retry: () => void }) {
+function DefaultErrorState({
+	retry,
+	error,
+}: {
+	retry: () => void;
+	error?: unknown;
+}) {
+	const detail = errorMessage(error);
 	return (
 		<Stack gap="sm" role="alert">
 			<Text c="red">Couldn't load this record.</Text>
+			{detail && (
+				<Text c="dimmed" size="sm">
+					{detail}
+				</Text>
+			)}
 			<Group>
 				<Button size="xs" variant="light" onClick={retry}>
 					Retry
@@ -54,19 +70,43 @@ function DefaultErrorState({ retry }: { retry: () => void }) {
 	);
 }
 
+/** Best-effort human-readable message from an unknown thrown value. */
+function errorMessage(error: unknown): string | null {
+	if (error == null) return null;
+	if (error instanceof Error) return error.message;
+	if (typeof error === "string") return error;
+	return null;
+}
+
 /** Title bar: title, the View/Edit toggle, and close. All routed through the core's guard. */
 function Header({ title: titleProp }: DetailHeaderProps) {
-	const { detail, slots, title: ctxTitle, requestClose } = useDetailContext();
+	const {
+		detail,
+		slots,
+		title: ctxTitle,
+		presentation,
+		requestClose,
+	} = useDetailContext();
 	if (slots.Header) {
 		const Slot = slots.Header;
 		return <Slot detail={detail} />;
 	}
+	// Modal/drawer render their own native title bar (which also names the
+	// dialog for assistive tech), so the in-content header drops the title and
+	// shows only the mode affordances to avoid a duplicate heading.
+	const chromed = presentation === "modal" || presentation === "drawer";
 	const title = titleProp ?? ctxTitle ?? defaultTitle(detail.mode);
 	return (
-		<Group justify="space-between" wrap="nowrap" className={classes.header}>
-			<Text fw={600} size="lg">
-				{title}
-			</Text>
+		<Group
+			justify={chromed ? "flex-end" : "space-between"}
+			wrap="nowrap"
+			className={classes.header}
+		>
+			{!chromed && (
+				<Title order={2} size="h4" fw={600}>
+					{title}
+				</Title>
+			)}
 			<Group gap="xs" wrap="nowrap">
 				{detail.mode === "view" && (
 					<Button
@@ -95,7 +135,7 @@ function Body({ children }: DetailBodyProps) {
 			content = <Slot />;
 		} else if (detail.status === "error") {
 			const Slot = slots.ErrorState ?? DefaultErrorState;
-			content = <Slot retry={detail.retry} />;
+			content = <Slot retry={detail.retry} error={detail.error} />;
 		}
 	}
 
@@ -121,8 +161,11 @@ function Actions({
 		return <Slot detail={detail} />;
 	}
 
-	const busy =
-		detail.status === "loading" || detail.isSubmitting || detail.isDeleting;
+	// A write is in flight. Disables every action. Close/Cancel stay usable
+	// while only a load is in flight (the load token supersedes it), but Save
+	// and Delete also wait on the load since they act on the loaded record.
+	const writing = detail.isSubmitting || detail.isDeleting;
+	const busy = detail.status === "loading" || writing;
 	const deleteButton = deletable ? (
 		<Button
 			color="red"
@@ -135,34 +178,49 @@ function Actions({
 		</Button>
 	) : null;
 
+	// A failed save/delete lands on submitError but never on the load `status`,
+	// so the default footer surfaces it inline (override via the Actions slot).
+	const submitMessage = errorMessage(detail.submitError);
+	const errorNode = submitMessage ? (
+		<Text c="red" size="sm" role="alert" ta="right">
+			{submitMessage}
+		</Text>
+	) : null;
+
 	// In view mode the View→Edit toggle lives in the Header; Actions offers
 	// only Delete/Close so the two parts don't duplicate the Edit affordance.
 	if (detail.mode === "view") {
 		return (
-			<Group justify="flex-end" wrap="nowrap" className={classes.footer}>
-				{deleteButton}
-				<Button variant="default" disabled={busy} onClick={requestClose}>
-					{closeLabel}
-				</Button>
-			</Group>
+			<Stack gap="xs" className={classes.footer}>
+				{errorNode}
+				<Group justify="flex-end" wrap="nowrap">
+					{deleteButton}
+					<Button variant="default" disabled={writing} onClick={requestClose}>
+						{closeLabel}
+					</Button>
+				</Group>
+			</Stack>
 		);
 	}
 
 	// edit | create
 	return (
-		<Group justify="flex-end" wrap="nowrap" className={classes.footer}>
-			{detail.mode === "edit" ? deleteButton : null}
-			<Button variant="default" disabled={busy} onClick={requestCancel}>
-				{cancelLabel}
-			</Button>
-			<Button
-				loading={detail.isSubmitting}
-				disabled={busy || !onSave}
-				onClick={() => onSave?.()}
-			>
-				{saveLabel}
-			</Button>
-		</Group>
+		<Stack gap="xs" className={classes.footer}>
+			{errorNode}
+			<Group justify="flex-end" wrap="nowrap">
+				{detail.mode === "edit" ? deleteButton : null}
+				<Button variant="default" disabled={writing} onClick={requestCancel}>
+					{cancelLabel}
+				</Button>
+				<Button
+					loading={detail.isSubmitting}
+					disabled={busy || !onSave}
+					onClick={() => onSave?.()}
+				>
+					{saveLabel}
+				</Button>
+			</Group>
+		</Stack>
 	);
 }
 
@@ -171,17 +229,30 @@ function renderPresentation(
 	isOpen: boolean,
 	onClose: () => void,
 	content: ReactNode,
+	// Mantine names the dialog via aria-labelledby only when its own `title` is
+	// set, so chrome'd surfaces render the title in the native header bar.
+	title: ReactNode,
 ): ReactNode {
 	switch (presentation) {
 		case "drawer":
 			return (
-				<DetailDrawer opened={isOpen} onClose={onClose} withCloseButton={false}>
+				<DetailDrawer
+					opened={isOpen}
+					onClose={onClose}
+					withCloseButton={false}
+					title={title}
+				>
 					{content}
 				</DetailDrawer>
 			);
 		case "modal":
 			return (
-				<DetailModal opened={isOpen} onClose={onClose} withCloseButton={false}>
+				<DetailModal
+					opened={isOpen}
+					onClose={onClose}
+					withCloseButton={false}
+					title={title}
+				>
 					{content}
 				</DetailModal>
 			);
@@ -189,10 +260,10 @@ function renderPresentation(
 			return <DetailPanel>{content}</DetailPanel>;
 		case "inline":
 			return content;
-		default: {
-			const _exhaustive: never = presentation;
-			return _exhaustive;
-		}
+		default:
+			// Exhaustive: an unknown presentation (untyped consumer) renders nothing.
+			presentation satisfies never;
+			return null;
 	}
 }
 
@@ -213,57 +284,44 @@ function DetailRoot<TData, TForm = TData>({
 }: DetailProps<TData, TForm>) {
 	// The component guards only on the isDirty-PROP path; otherwise the core
 	// self-guards programmatic transitions with its hook-supplied isDirty, and
-	// guarding here too would double-prompt.
+	// guarding here too would double-prompt. (`detail` is a fresh object every
+	// render, so memoizing the callbacks/context below would buy nothing.)
 	const dirtyPropProvided = isDirty !== undefined;
 	const resolvedDirty = isDirty ?? detail.isDirty;
+	const guardConfirm =
+		dirtyPropProvided && resolvedDirty ? confirmDiscard : undefined;
 
-	const guardedRun = useCallback(
-		(action: () => void) => {
-			if (!(dirtyPropProvided && resolvedDirty && confirmDiscard)) {
-				action();
-				return;
-			}
-			const decision = confirmDiscard();
-			if (typeof decision === "boolean") {
-				if (decision) action();
-				return;
-			}
-			void decision.then((ok) => {
-				if (ok) action();
-			});
-		},
-		[dirtyPropProvided, resolvedDirty, confirmDiscard],
-	);
+	const requestClose = () => runWithConfirm(() => detail.close(), guardConfirm);
+	const requestCancel = () =>
+		runWithConfirm(
+			() => (detail.mode === "edit" ? detail.setMode("view") : detail.close()),
+			guardConfirm,
+		);
 
-	const requestClose = useCallback(
-		() => guardedRun(() => detail.close()),
-		[guardedRun, detail],
-	);
-	const requestCancel = useCallback(
-		() =>
-			guardedRun(() =>
-				detail.mode === "edit" ? detail.setMode("view") : detail.close(),
-			),
-		[guardedRun, detail],
-	);
+	const ctx: DetailContextValue = {
+		detail: detail as unknown as UseDetailReturn<unknown, unknown>,
+		isDirty: resolvedDirty,
+		title,
+		presentation,
+		slots: (slots ?? {}) as unknown as DetailSlots<unknown, unknown>,
+		requestClose,
+		requestCancel,
+	};
 
-	const ctx = useMemo<DetailContextValue>(
-		() => ({
-			detail: detail as unknown as UseDetailReturn<unknown, unknown>,
-			isDirty: resolvedDirty,
-			title,
-			slots: (slots ?? {}) as unknown as DetailSlots<unknown, unknown>,
-			requestClose,
-			requestCancel,
-		}),
-		[detail, resolvedDirty, title, slots, requestClose, requestCancel],
-	);
-
+	// Title for the modal/drawer native header (also names the dialog). Always
+	// non-empty so the dialog is labelled even without an explicit `title`.
+	const surfaceTitle = title ?? defaultTitle(detail.mode);
 	const content = <div className={classes.root}>{children}</div>;
 
 	return (
 		<DetailContext.Provider value={ctx}>
-			{renderPresentation(presentation, detail.isOpen, requestClose, content)}
+			{renderPresentation(
+				presentation,
+				detail.isOpen,
+				requestClose,
+				content,
+				surfaceTitle,
+			)}
 		</DetailContext.Provider>
 	);
 }

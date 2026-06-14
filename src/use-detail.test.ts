@@ -204,6 +204,84 @@ describe("useDetail", () => {
 			expect(confirmDiscard).not.toHaveBeenCalled();
 			expect(result.current.mode).toBe("view");
 		});
+
+		it("ignores setMode('create') (create is entered via openCreate)", () => {
+			// Arrange
+			const { result, master } = setup({
+				initialMode: "view",
+				record: { id: "1", name: "Ann" },
+			});
+			act(() => result.current.open("1"));
+			vi.mocked(master.setActive).mockClear();
+
+			// Act: the type rejects "create"; this guards the JS-caller path.
+			act(() => (result.current.setMode as (m: string) => void)("create"));
+
+			// Assert: no half-applied create transition
+			expect(result.current.mode).toBe("view");
+			expect(master.setActive).not.toHaveBeenCalled();
+		});
+	});
+
+	describe("write supersession & reentrancy", () => {
+		it("drops a stale save's side-effects once a newer open supersedes it", async () => {
+			// Arrange: a save we can hold open mid-flight
+			const gate = deferred<User>();
+			const onSubmit = vi.fn(() => gate.promise);
+			const { result, master } = setup({
+				initialMode: "edit",
+				record: { id: "1", name: "Ann" },
+				onSubmit,
+			});
+
+			// Act: start a save, then navigate to another record before it resolves
+			let saving!: Promise<void>;
+			act(() => {
+				saving = result.current.save({ id: "1", name: "Annabel" });
+			});
+			expect(result.current.isSubmitting).toBe(true);
+			act(() => result.current.open("2", "view"));
+
+			// Act: the now-stale save resolves
+			await act(async () => {
+				gate.resolve({ id: "1", name: "Annabel" });
+				await saving;
+			});
+
+			// Assert: the stale save neither reconciles nor hijacks the active row
+			expect(master.reconcile).not.toHaveBeenCalled();
+			expect(master.setActive).toHaveBeenLastCalledWith("2");
+			expect(result.current.isSubmitting).toBe(false);
+		});
+
+		it("ignores a re-entrant save while one is already in flight", async () => {
+			// Arrange
+			const gate = deferred<User>();
+			const onSubmit = vi.fn(() => gate.promise);
+			const { result } = setup({
+				initialMode: "edit",
+				record: { id: "1", name: "Ann" },
+				onSubmit,
+			});
+
+			// Act: fire two saves before the first settles
+			let first!: Promise<void>;
+			act(() => {
+				first = result.current.save({ id: "1", name: "A" });
+			});
+			act(() => {
+				result.current.save({ id: "1", name: "B" });
+			});
+
+			// Assert: only the first submit ran
+			expect(onSubmit).toHaveBeenCalledTimes(1);
+
+			// Cleanup
+			await act(async () => {
+				gate.resolve({ id: "1", name: "A" });
+				await first;
+			});
+		});
 	});
 
 	describe("close (dirty guard)", () => {

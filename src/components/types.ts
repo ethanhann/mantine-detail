@@ -12,7 +12,9 @@ export interface DetailSlots<TData = unknown, TForm = TData> {
 	Header?: ComponentType<{ detail: UseDetailReturn<TData, TForm> }>;
 	Actions?: ComponentType<{ detail: UseDetailReturn<TData, TForm> }>;
 	LoadingDetail?: ComponentType;
-	ErrorState?: ComponentType<{ retry: () => void }>;
+	/** Replaces the body's load-error state. Receives the load `error` so it can
+	 * render a meaningful message, plus `retry` to re-emit `load()`. */
+	ErrorState?: ComponentType<{ retry: () => void; error?: unknown }>;
 }
 
 export interface DetailProps<TData, TForm = TData> {
@@ -52,7 +54,9 @@ export interface DetailActionsProps {
 	/**
 	 * Invoked by the Save button. The hook never owns form values, so the bare
 	 * `<Detail.Actions>` needs this to submit, e.g.
-	 * `onSave={() => detail.save(form.getValues())}`.
+	 * `onSave={() => detail.save(form.getValues())}`. It must handle its own
+	 * errors (the shipped adapters route them through `detail.save`, which
+	 * surfaces them on `detail.submitError`); a rejection here is not caught.
 	 */
 	onSave?: () => void | Promise<void>;
 	/** Show a Delete button in view/edit modes. */

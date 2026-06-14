@@ -199,6 +199,24 @@ describe("<Detail>", () => {
 			expect(screen.getByRole("button", { name: "Cancel" })).toBeDisabled();
 		});
 
+		it("surfaces a submit/delete error in the default footer", () => {
+			// Arrange: a failed save lands on submitError (never on load status)
+			const detail = makeDetail({
+				mode: "edit",
+				submitError: new Error("Save failed"),
+			});
+
+			// Act
+			renderWithProvider(
+				<Detail detail={detail} presentation="panel">
+					<Detail.Actions onSave={vi.fn()} />
+				</Detail>,
+			);
+
+			// Assert
+			expect(screen.getByRole("alert")).toHaveTextContent("Save failed");
+		});
+
 		it("shows and wires a Delete button when deletable", async () => {
 			// Arrange
 			const detail = makeDetail({ mode: "edit" });
@@ -500,6 +518,44 @@ describe("<Detail>", () => {
 
 			// Assert
 			expect(results).toHaveNoViolations();
+		});
+
+		it("gives the modal dialog an accessible name from the title", async () => {
+			// Arrange
+			const detail = makeDetail({ mode: "view", isOpen: true });
+			renderWithProvider(
+				<Detail detail={detail} presentation="modal" title="Accessible modal">
+					<Detail.Header />
+					<Detail.Body>
+						<p>content</p>
+					</Detail.Body>
+				</Detail>,
+			);
+
+			// Assert: the portal dialog is labelled, and axe is clean
+			expect(
+				screen.getByRole("dialog", { name: "Accessible modal" }),
+			).toBeInTheDocument();
+			expect(await axe(document.body)).toHaveNoViolations();
+		});
+
+		it("gives the drawer dialog an accessible name from the title", async () => {
+			// Arrange
+			const detail = makeDetail({ mode: "view", isOpen: true });
+			renderWithProvider(
+				<Detail detail={detail} presentation="drawer" title="Accessible drawer">
+					<Detail.Header />
+					<Detail.Body>
+						<p>content</p>
+					</Detail.Body>
+				</Detail>,
+			);
+
+			// Assert
+			expect(
+				screen.getByRole("dialog", { name: "Accessible drawer" }),
+			).toBeInTheDocument();
+			expect(await axe(document.body)).toHaveNoViolations();
 		});
 	});
 });

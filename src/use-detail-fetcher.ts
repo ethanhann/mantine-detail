@@ -66,7 +66,6 @@ export function useDetailFetcher<TData, TForm = TData>(
 		// stays a no-op otherwise and never reconciles a phantom delete.
 		onDelete: options.remove ? onDelete : undefined,
 		master: options.master,
-		reconcile: options.reconcile,
 		isDirty: options.isDirty,
 		confirmDiscard: options.confirmDiscard,
 		initialMode: options.initialMode,

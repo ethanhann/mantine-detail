@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import { createContext, useContext } from "react";
 import type { UseDetailReturn } from "../types";
-import type { DetailSlots } from "./types";
+import type { DetailSlots, Presentation } from "./types";
 
 export interface DetailContextValue {
 	/** Generics are erased here; the public `<Detail>` props keep them typed. */
@@ -9,6 +9,8 @@ export interface DetailContextValue {
 	/** Resolved dirty signal (prop overrides `detail.isDirty`). */
 	isDirty: boolean;
 	title?: ReactNode;
+	/** The chosen presentation; chrome'd surfaces (modal/drawer) own the title bar. */
+	presentation: Presentation;
 	slots: DetailSlots<unknown, unknown>;
 	/** Close, routed through the dirty guard. */
 	requestClose: () => void;

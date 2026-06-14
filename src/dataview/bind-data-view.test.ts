@@ -206,6 +206,29 @@ describe("bindDataView", () => {
 		});
 	});
 
+	describe("reconcile → patch fallback (dataview < 0.8)", () => {
+		it("falls back to refetch when the in-place primitives are missing", () => {
+			// Arrange: a view without patchRow/insertRow/removeRow
+			const refetch = vi.fn();
+			const view = { refetch } as unknown as UseDataViewReturn<User>;
+			const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+			const { result } = renderBinding(view, { strategy: "patch" });
+
+			// Act
+			act(() =>
+				result.current.reconcile({
+					type: "saved",
+					record: { id: "1", name: "Ann" },
+				}),
+			);
+
+			// Assert: degrades to a full refetch rather than throwing
+			expect(refetch).toHaveBeenCalledTimes(1);
+			expect(warn).toHaveBeenCalledTimes(1);
+			warn.mockRestore();
+		});
+	});
+
 	describe("activeId (independent of bulk selection)", () => {
 		it("starts with no active record", () => {
 			// Arrange / Act

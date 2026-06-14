@@ -1,7 +1,9 @@
 import { useCallback, useRef, useState } from "react";
+import { runWithConfirm } from "./guard";
 import type {
 	DetailMode,
 	OpenMode,
+	SetModeTarget,
 	SubmitContext,
 	UseDetailOptions,
 	UseDetailReturn,
@@ -38,6 +40,15 @@ export function useDetail<TData, TForm = TData>(
 	// Id of the record last requested via open()/save(), used by retry().
 	const lastLoadId = useRef<string | null>(null);
 
+	// Monotonic token guarding write side-effects, mirroring the fetcher's load
+	// token. A nav transition (open/openCreate/close) or a newer write bumps it,
+	// so a slow save/delete that resolves after the user has moved on can no
+	// longer reconcile, re-activate a row, or force the mode back to view.
+	const writeToken = useRef(0);
+	// One write at a time: blocks a double-submit (e.g. a custom Actions slot or
+	// a repeated programmatic call) while a save/delete is already in flight.
+	const isWritingRef = useRef(false);
+
 	// Latest props/state, read from inside the stable callbacks below so they
 	// never close over stale values without needing to be re-created each render.
 	const latest = useRef(options);
@@ -49,32 +60,20 @@ export function useDetail<TData, TForm = TData>(
 
 	/**
 	 * Run `action`, but when the current edit is dirty, route it through the
-	 * confirm gate first. A synchronous decision keeps the whole transition
-	 * synchronous (easier to reason about); a promise defers it until resolved.
+	 * confirm gate first.
 	 */
 	const runGuarded = useCallback((action: () => void) => {
 		const isWriteMode =
 			modeRef.current === "edit" || modeRef.current === "create";
 		const confirmDiscard = latest.current.confirmDiscard;
-
-		if (!(dirtyRef.current && isWriteMode && confirmDiscard)) {
-			action();
-			return;
-		}
-
-		const decision = confirmDiscard();
-		if (typeof decision === "boolean") {
-			if (decision) action();
-			return;
-		}
-		void decision.then((ok) => {
-			if (ok) action();
-		});
+		const shouldGuard = dirtyRef.current && isWriteMode && !!confirmDiscard;
+		runWithConfirm(action, shouldGuard ? confirmDiscard : undefined);
 	}, []);
 
 	const open = useCallback(
 		(id: string, openMode: OpenMode = "view") => {
 			runGuarded(() => {
+				writeToken.current++; // supersede any in-flight write
 				lastLoadId.current = id;
 				setSubmitError(undefined);
 				setModeState(openMode);
@@ -88,6 +87,7 @@ export function useDetail<TData, TForm = TData>(
 
 	const openCreate = useCallback(() => {
 		runGuarded(() => {
+			writeToken.current++; // supersede any in-flight write
 			lastLoadId.current = null;
 			setSubmitError(undefined);
 			setModeState("create");
@@ -97,8 +97,14 @@ export function useDetail<TData, TForm = TData>(
 	}, [runGuarded]);
 
 	const setMode = useCallback(
-		(target: DetailMode) => {
-			if (target === modeRef.current) return;
+		(target: SetModeTarget) => {
+			// `create` is entered only via openCreate() (it also clears the active
+			// row and load state); ignore it here so setMode stays the view↔edit
+			// toggle and can't land a half-applied create transition. The cast
+			// guards JS callers; the type already rejects it for TS callers.
+			if ((target as DetailMode) === "create" || target === modeRef.current) {
+				return;
+			}
 			runGuarded(() => {
 				setSubmitError(undefined);
 				setModeState(target);
@@ -109,6 +115,7 @@ export function useDetail<TData, TForm = TData>(
 
 	const close = useCallback(() => {
 		runGuarded(() => {
+			writeToken.current++; // supersede any in-flight write
 			setIsOpen(false);
 			setSubmitError(undefined);
 			latest.current.master?.setActive(null);
@@ -120,6 +127,8 @@ export function useDetail<TData, TForm = TData>(
 		const { getRowId, onSubmit, master } = latest.current;
 		// Nothing to submit in view mode, or with no submit handler wired.
 		if (currentMode === "view" || !onSubmit) return;
+		// One write at a time: ignore a re-entrant save while one is in flight.
+		if (isWritingRef.current) return;
 
 		const rec = latest.current.record;
 		const ctx: SubmitContext =
@@ -130,24 +139,30 @@ export function useDetail<TData, TForm = TData>(
 					}
 				: { mode: "create" };
 
+		const token = ++writeToken.current;
+		isWritingRef.current = true;
 		setIsSubmitting(true);
 		setSubmitError(undefined);
 		try {
 			const saved = await onSubmit(values, ctx);
-			master?.reconcile(
-				currentMode === "create"
-					? { type: "created", record: saved }
-					: { type: "saved", record: saved },
-			);
-			const savedId = getRowId(saved);
-			lastLoadId.current = savedId;
-			master?.setActive(savedId);
-			// A successful write returns to the read view of the persisted record;
-			// dismiss instead by calling close() in response if your flow prefers.
-			setModeState("view");
+			// Drop the side-effects if a nav transition superseded this write.
+			if (token === writeToken.current) {
+				master?.reconcile(
+					currentMode === "create"
+						? { type: "created", record: saved }
+						: { type: "saved", record: saved },
+				);
+				const savedId = getRowId(saved);
+				lastLoadId.current = savedId;
+				master?.setActive(savedId);
+				// A successful write returns to the read view of the persisted record;
+				// dismiss instead by calling close() in response if your flow prefers.
+				setModeState("view");
+			}
 		} catch (err) {
-			setSubmitError(err);
+			if (token === writeToken.current) setSubmitError(err);
 		} finally {
+			isWritingRef.current = false;
 			setIsSubmitting(false);
 		}
 	}, []);
@@ -156,22 +171,30 @@ export function useDetail<TData, TForm = TData>(
 		const currentMode = modeRef.current;
 		const { getRowId, onDelete, master } = latest.current;
 		if (currentMode === "create" || !onDelete) return;
+		// One write at a time: ignore a re-entrant delete while one is in flight.
+		if (isWritingRef.current) return;
 
 		const rec = latest.current.record;
 		const id = rec ? getRowId(rec) : (master?.activeId ?? lastLoadId.current);
 		// Guard: nothing persisted to delete.
 		if (!id) return;
 
+		const token = ++writeToken.current;
+		isWritingRef.current = true;
 		setIsDeleting(true);
 		setSubmitError(undefined);
 		try {
 			await onDelete(id);
-			master?.reconcile({ type: "deleted", id });
-			master?.setActive(null);
-			setIsOpen(false);
+			// Drop the side-effects if a nav transition superseded this delete.
+			if (token === writeToken.current) {
+				master?.reconcile({ type: "deleted", id });
+				master?.setActive(null);
+				setIsOpen(false);
+			}
 		} catch (err) {
-			setSubmitError(err);
+			if (token === writeToken.current) setSubmitError(err);
 		} finally {
+			isWritingRef.current = false;
 			setIsDeleting(false);
 		}
 	}, []);

@@ -109,7 +109,8 @@ Without an adapter the core stays form-agnostic. The bare `<Detail.Actions>` jus
 ```
 
 `open` takes an optional mode, so you can jump straight into editing: `detail.open("42", "edit")`.
-`useDetailFetcher` also accepts `initialMode` and a `reconcile` strategy hint (see below).
+`useDetailFetcher` also accepts `initialMode`. The reconciliation strategy is configured on the
+master binding (`bindDataView(view, { strategy })`), not on the hook (see below).
 
 ## Controlled core (`useDetail`)
 
@@ -138,6 +139,10 @@ const detail = useDetail<User>({
 
 `<Detail>`, the dirty guard, presentations, and the master binding all work identically. The
 return shape is the same `UseDetailReturn`.
+
+Because the core never owns `record`, your `onSubmit` must **adopt** the persisted record it
+returns (write it back into your data layer) so the post-save view shows it. A successful write
+returns to `view` mode against whatever `record` you supply. `useDetailFetcher` does this for you.
 
 ## Presentations
 
@@ -208,7 +213,12 @@ useEffect(() => {
 **Where `isDirty` comes from.** When the form lives inside `<Detail>` (the common case), pass the
 live signal as `<Detail isDirty={...}>`. That prop overrides the hook's `isDirty` option and is what
 the guard and Actions read. Use the hook's `isDirty` option only when dirtiness is known where the
-hook is created. Supply `confirmDiscard` on whichever path you use.
+hook is created.
+
+**Wire `confirmDiscard` on exactly one path — never both.** Either the `<Detail confirmDiscard>`
+prop (when the form lives inside `<Detail>`, alongside the `isDirty` prop) **or** the hook's
+`confirmDiscard` option (controlled core / programmatic transitions). Supplying it on both stacks
+the two guards and prompts twice for a single discard.
 
 ## Binding to a master list
 
@@ -348,6 +358,13 @@ Both adapters auto-reset the form to each loaded record (and to a blank form on 
 record shape. The `@mantine/form` adapter expects a **controlled** form (`useForm({ mode:
 "controlled" })`) so `isDirty` stays reactive. The core never depends on a form library. The
 adapters operate on the form instance you pass in.
+
+The reset fires when the loaded `record` or `mode` changes. To protect unsaved work, the adapters
+**skip** that reset when the `record` changes underneath an active, dirty edit (e.g. a controlled-core
+background revalidation in `useDetail`). Cancel and save (which return to `view`) still reset
+normally. The one case this doesn't cover is opening a *different* record straight into edit
+(`open(otherId, "edit")`) while the current edit is already dirty; prefer opening in `view` and
+toggling to edit, which the `MasterDetail` recipe does.
 
 ## Development
 
