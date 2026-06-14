@@ -152,6 +152,12 @@ on a detail route). Each is also exported standalone (`<DetailDrawer>`, `<Detail
 `<DetailPanel>`) for full layout control. **Route** is not a separate mode: render
 `presentation="inline"` on your detail route; the library adds no routing.
 
+For **drawer** and **modal**, the title renders in the surface's native title bar (which also names
+the dialog for assistive tech via `aria-labelledby`), so `<Detail.Header>` shows only the mode
+actions (Edit/Close) there. For **panel** and **inline** there is no native chrome, so
+`<Detail.Header>` renders the title heading itself. A custom `Header` slot supplies the in-content
+header for every presentation; on drawer/modal the dialog title stays the native bar.
+
 ## The view ↔ edit toggle
 
 `view` is included as **orchestration only**. The library has no field schema, so *you* render both
