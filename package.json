@@ -1,6 +1,6 @@
 {
 	"name": "@ethanhann/mantine-detail",
-	"version": "0.1.0",
+	"version": "0.2.0",
 	"description": "The single-record companion to @ethanhann/mantine-dataview: a record's view/edit/create lifecycle in a pluggable surface, reconciled back into a master list. Built on Mantine v9.",
 	"type": "module",
 	"main": "./dist/index.js",
